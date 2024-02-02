@@ -145,6 +145,10 @@ static CoreDumpData _coreDumpData;   // This data is not initialized to zero at 
 
 When a bootloader is employed on a system, the bootloader must define a no-init section within RAM at least the size of `CoreDumpData` to prevent the bootloader application for initializing the RAM to 0 and overwriting the core dump data structure. In practice, making the bootloader no-init section larger than is necessary allows the main application `CoreDumpData` structure to increase in size without re-deploying a new bootloader. 
 
+The memory map below shows an example of a non-init Crash Dump data section common to the bootloader and application within RAM. The C-runtime will not initialize the Crash Dump section so a warm-boot reset will allow moving RAM crash dump data to persistent storage. 
+
+![Local Image](images/Figure6.jpg)
+
 # Persistent storage
 
 The crash data ultimately needs to be persisted to some permanent storage medium. It could be flash memory, EEPROM, or other non-volatile storage local to the CPU. Alternatively, the crash data can be transmitted to another CPU capable of data persistence. The data can be sent over serial, wireless, Ethernet or any other appropriate communication means. I’ve designed systems that propagate crash dump messages down a chain of processors until arriving at one that stores the data. The point being that if a processor can’t save the data locally, transmit it to one that can. 

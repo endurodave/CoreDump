@@ -24,13 +24,13 @@
 
 // TODO: Define the RAM start and stop addresses. Platform specific detail.
 // See your processor memory map for values.
-#define RAM_BEGIN   0x100000
-#define RAM_END     0x200000
+#define RAM_BEGIN   0x20000000
+#define RAM_END     0x20004FFF
 
 // TODO: Define the flash start and stop addresses. Platform specific detail.
 // See your processor memory map for values.
-#define FLASH_BASE  0x400000
-#define FLASH_END   0x500000
+#define FLASH_BASE  0x08000000
+#define FLASH_END   0x0801FFFF
 
 // TODO: How many operating system tasks to store within the core dump.
 #define OS_TASKCNT  5
