@@ -1,7 +1,9 @@
 # Overview
-A memory core dump framework that stores crash information including call stacks on any embedded system.
+
+A core dump framework that stores crash information including call stacks on any embedded system.
 
 # Introduction
+
 Embedded software development can be quite difficult, especially when trying to solve intermittent software failures. A core dump, or sometimes called a crash dump, is a means of capturing a "snapshot" of the CPU and software state at moment of failure. Whereas large, full-featured operating systems like Windows and Linux already have built-in crash dump capabilities, embedded systems typically aren't equipped with such luxuries. Yet these systems are the ones most in need of a post-mortem diagnostic utility. Embedded systems are increasingly complex with threads, drivers, interrupts and lots of low-level custom crafted code – things are bound to go wrong in difficult to diagnose ways. 
 
 The techniques discussed within this article show exactly how to create a very useful core dump feature with a minimal amount of code. Generic algorithms are suitable for almost any CPU. No specific hardware is required to implement the techniques shown here. This article covers the following topics.
@@ -14,7 +16,7 @@ The techniques discussed within this article show exactly how to create a very u
 6.	Core dump persistence and transmission
 7.	Core dump analysis
 
-The Core dump source code builds on any compiler. Serach for TODO comments for platform-specific implementation details that must be implemented for deployment.
+The Core dump source code builds on any compiler. Serach for `TODO` comments for platform-specific implementation details that must be implemented for deployment.
 
 After reading this article, you'll have a full understanding of the techniques used to implement a core dump utility for your project.  
 
@@ -30,21 +32,21 @@ By its nature, a core dump is a very platform-specific feature that changes base
 
 # Core Dump High-Level Process
 
-An embedded core dump follows a process starting the crash event until a developer decodes the crash data for crash analysis. 
+An embedded core dump follows a process starting at the crash event until a developer decodes the crash data for crash analysis. 
 
-1.	Crash occurs (either from an assert or hardware exception)
-2.	Extract call stack addresses and save critical processor registers
-3.	Temporarily store stack/reg data into non-initialized RAM
-4.	Save unique crash dump key in non-initialized RAM
+1.	Crash occurs (either from an software assertion or hardware exception)
+2.	Store crash soruce code location file name and line number into non-initialized RAM
+3.	Store call stack addresses and critical processor registers into non-initialized RAM
+4.	Store unique crash dump key in non-initialized RAM
 5.	Programmatically reboot CPU
 6.	Read unique crash dump key
-7.	If crash dump key set, move crash data from non-initialized RAM storage to flash storage
-8.	Later, move flash crash data off device (USB, Bluetooth, etc…)
-9.	Developer decodes crash data call stack addresses using custom decoder tool 
+7.	If crash dump key set, move crash data from non-initialized RAM storage to persistent storage (e.g. file system)
+8.	Later, move flash crash data off the device (USB, Bluetooth, etc…) for developer analysis
+9.	Developer decodes crash data call stack addresses using a custom core dump decoder tool 
 
 # Core Dump API
 
-The core dump API is simple and shown below:
+The core dump API is shown below:
 
 ```cpp
 /// Store core dump data.
@@ -79,7 +81,7 @@ A core dump requires tools and techniques that are less well known but critical 
 
 An address-to-line utility is critical to the core dump decoding. The tool converts an address to a source code file name and line number. During the core dump, numerous address locations are stored. To translate each address to a file/line requires this tool. 
 
-Many compiler tool chains come with this utility. For those that do not, you still may be able to find one. For instance, Keil didn’t come with this tool but the GNU Binary Utilities (binutils) within the GCC toolchain has an addr2line.exe that's compatible with Keil ARM AXF files (and IAR OUT files). An AXF (OUT) file is the compiler output containing both object code and debug information. The addr2line tool takes an executable image file and an address and outputs a source code file name and line number. The one I'm using for ARM is part of the Cygwin binutils package installation. The GCC compiler supports many processors so check the GCC binutils if your compiler doesn't already have this utility. 
+Many compiler tool chains come with this utility. For those that do not, you still may be able to find one. For instance, Keil didn’t come with this tool but the GNU Binary Utilities (binutils) within the GCC toolchain has an addr2line.exe that's compatible with Keil ARM AXF files (and IAR OUT files). An AXF (OUT) file is the compiler output containing both object code and debug information. The `addr2line` tool takes an executable image file and an address and outputs a source code file name and line number. The one I'm using for ARM is part of the Cygwin binutils package installation. The GCC compiler supports many processors so check the GCC binutils if your compiler doesn't already have this utility. 
 
 ## No zero-initialize RAM section
 
@@ -87,7 +89,8 @@ When a software failure occurs, the system is not in a stable state. Any number 
 
 The temporary storage is just RAM. The trick, however, is to place the core dump data structure in a location that is not zero-initialized at startup. This way, the crash data can be stored and survive a warm boot (i.e. a CPU reset where the power is not removed and RAM contents not lost). 
 
-Keil uses a scatter file to direct the linker. The snippet below creates a section called NoInit. Your compiler may have a different means of creating a no-initialize section.
+Keil uses a scatter file to direct the linker where to place data. The snippet below creates a section called `NoInit`. Your compiler may have a different means of creating a no-initialize section.
+
 ```cpp 
   ; Create a section for uninitialized data. This prevents zero 
   ; initialized (ZI) data located in NoInit to persist over a CPU reset. 
@@ -129,21 +132,23 @@ public:
 #endif
 };
 ```
-A pragma is used to place an instance of the structure within the NoInit section. This prevents zero initialization of the data when the CPU starts. Your compiler may use a different approach. 
+A pragma is used to place an instance of the structure within the `NoInit` section. This prevents zero initialization of the data when the CPU starts. Your compiler may use a different approach. 
+
 ```cpp
 #pragma arm section zidata = "NoInit"
 
-static CoreDumpData _coreDumpData;
+static CoreDumpData _coreDumpData;   // This data is not initialized to zero at startup
 
 #pragma arm section zidata
 ```
 ## Bootloader No-Init
 
-When a bootloader is employed on a system, the bootloader must define a no-init section within RAM at least the size of CoreDumpData to prevent the bootloader application for initializing the RAM to 0 and overwriting the core dump data structure. In practice, making the bootloader no-init section larger than is necessary allows the main application CoreDumpData structure to increase in size without re-deploying a new bootloader. 
+When a bootloader is employed on a system, the bootloader must define a no-init section within RAM at least the size of `CoreDumpData` to prevent the bootloader application for initializing the RAM to 0 and overwriting the core dump data structure. In practice, making the bootloader no-init section larger than is necessary allows the main application `CoreDumpData` structure to increase in size without re-deploying a new bootloader. 
 
 # Persistent storage
 
 The crash data ultimately needs to be persisted to some permanent storage medium. It could be flash memory, EEPROM, or other non-volatile storage local to the CPU. Alternatively, the crash data can be transmitted to another CPU capable of data persistence. The data can be sent over serial, wireless, Ethernet or any other appropriate communication means. I’ve designed systems that propagate crash dump messages down a chain of processors until arriving at one that stores the data. The point being that if a processor can’t save the data locally, transmit it to one that can. 
+
 At startup, sometimes I’ll just put the CPU into a tight loop just transmitting the failure over and over again for another processor to receive. Other times I’ll let the code reboot normally after a crash and in the background perform the core dump transmit. 
 
 Note that a processor reset is necessary before attempting persistence, as data storage will likely require too much of the failed application and processor. Writing crash data locally, or data transmission, at the time of failure can lead to a cascade of additional errors. That's why simply saving information to a pre-defined RAM location and rebooting before trying to save/transmit offers a more robust solution no matter the failure mode. Once cleanly restarted, services not available during the failure, such as the OS or interrupts, are now operational and can be used for moving the crash data somewhere permanent. 
@@ -154,9 +159,9 @@ When creating the core dump stack decoding algorithms, you’ll need a debugger 
 
 # CoreDump Project
 
-The CoreDump source  implements the core dump feature, yet some details marked with `TODO` comments are platform-specific and must be implemented to achieve a fully functional core dump. A software assertion and a hardware exception are demonstrated. 
+The CoreDump source implements the core dump feature, yet some details marked with `TODO` comments are platform-specific and must be implemented to achieve a fully functional core dump. A software assertion and a hardware exception are demonstrated. 
 
-The source code for Main.c is shown below. The code simply calls functions three levels deep: `main() -> Call1() -> Call2() -> Call3()`. Inside `Call3()`,  either a divide by 0 hardware exception or a software assertion is generated. Use the `define HARD_FAULT_TEST` to control which test is run. Both cause a core dump to be stored and the CPU to reboot. 
+The source code for Main.c is shown below. The code simply calls functions three levels deep: `main() -> Call1() -> Call2() -> Call3()`. Inside `Call3()`,  either a divide by 0 hardware exception or a software assertion is generated. Use the `#define HARD_FAULT_TEST` to control which test is run. Both cause a core dump to be stored and the CPU to reboot. 
 
 ```cpp
 // @see https://github.com/endurodave/CoreDump
@@ -249,11 +254,12 @@ int main(void)
 ```
 
 # Stack Frame
+
 Central to a useful core dump feature is capturing the call stack. As the program executes, functions are called. During a function call the return address, and other stack variables, are pushed onto the stack. When a function exits, the return address is popped off the stack and the processor continues execution at that address. It’s these pushed return address values stored within the stack frame that are of interest in reconstructing the call stack at the time of failure. 
 
 The first thing to find out is the direction of the stack growth, either up or down. The ARM Cortex expands downwards, meaning as the stack grows the stack pointer moves to a lower address. The algorithm works with a stack growing in either direction with a slight tweak to seek upwards or downwards through memory. 
 
-The stack trace algorithm has two possible modes depending on whether your compiler uses a stack frame pointer. The "no frame pointer" version is the most generic and works with any call stack. The "use frame pointer" version is slightly more efficient and, of course, only works with call stacks containing stack frame pointers. 
+The stack trace algorithm has two possible modes depending on whether your compiler uses a stack frame pointer. The "no frame pointer" version is the most generic and works with any call stack. The "use frame pointer" version is slightly more efficient and, of course, only works with call stacks containing stack frame pointers. Some compilers allow turning the feature on and off (e.g. GCC uses `-fno-omit-frame-pointer`).
 
 The next thing to know is the address ranges for RAM and flash. When viewing raw memory it helps to know where the address is located. On the ARM Cortex STM32F103 simulator, the following address ranges are used:
 
@@ -271,7 +277,7 @@ The figure above shows the call stack, currently at address 0x200003b0. The stac
 
 `Call1()` is the first level and uses a 11111111 marker. `Call2()`  uses 22222222 and `Call3()` uses 33333333. `main()` uses `EFEFEFEF` to mark the start of the user call stack. 
 
-Now that unique patterns are dispersed throughout the stack, it’s easy to deconstruct its format. Notice the extra value between two sets of markers. For instance, between 33333333 and 22222222 is the value 08000337. This is actually a function return address pushed onto the stack. On ARM, this address comes from the Link Register (LR). When Call3() exits, the code will continue execution at address 0x08000337. 
+Now that unique patterns are dispersed throughout the stack, it’s easy to deconstruct its format. Notice the extra value between two sets of markers. For instance, between 33333333 and 22222222 is the value 08000337. This is actually a function return address pushed onto the stack. On ARM, this address comes from the Link Register (LR). When `Call3()` exits, the code will continue execution at address 0x08000337. 
 
 Similarly, the return address for `Call2()` is 0x08000351 as shown between the 2222222 and 11111111 markers. And finally, 0x08000389 is the return address for `Call1()`. 
 
@@ -292,11 +298,11 @@ While viewing the source code line within a debugger is helpful for developing a
 
 ![Local Image](images/Figure3.png) 
 
-Address 0x8000353 translates to `Call1()` located in Main.c line 46.
+The command line arguments to `addr2line` requires the software executable (i.e. `CoreDump.axf`) and the address to decode (0x8000353). In this case, address 0x8000353 translates to function `Call1()` located in `Main.c` line 46.
 
 # Fault Handling
 
-Now that we’ve created our fault test code, let’s see how to extract and store the call stack. Fault.c contains code to handle system faults. The assert macros (e.g. ASSERT_TRUE) calls FaultHandler() if the check fails. The function just stores the crash information and resets the processor. 
+Now that we’ve created our fault test code, let’s see how to extract and store the call stack. `Fault.c` contains code to handle system faults. The assert macros (e.g. `ASSERT_TRUE`) calls `FaultHandler()` if the check fails. The function just stores the crash information and resets the processor. 
 
 ```cpp
 void FaultHandler(const char* file, unsigned short line)
@@ -311,14 +317,15 @@ void FaultHandler(const char* file, unsigned short line)
 }
 ```
 
-`HardFaultHandler()` is called when a hardware exception occurs and is called from an interrupt context. For an ARM architecture, during an interrupt context the stack pointer is located in the MSP or PSP register. Once the address of the stack is acquired, the core dump is stored and the CPU reset. 
+`HardFaultHandler()` is called when a hardware exception occurs and is called from an interrupt context. For an ARM architecture, during an interrupt context the stack pointer is located in the MSP or PSP register. Once the address of the stack is acquired, the core dump is stored and the CPU reset.
+
 ```cpp
 void HardFaultHandler(void)
 {
 	// TODO: Called if a hardware exception is generated. Platform 
 	// specific detail. Connect exceptions to call this function.
 
-#if 0 // ARM example begin:
+#if 0 // ARM example begin
 	// Determine if main stack or process stack is being used. Bit 2 of the 
 	// LR (link register) indicates if MSP or PSP stack is used.
 	if ((LR & 0x4) == 0)
@@ -340,7 +347,7 @@ void HardFaultHandler(void)
 }
 ```
 
-Within CoreDump.c, the `CoreDumpStore()` function stores the core dump data into the `_coreDumpData` structure previously placed into the `NoInit` section to prevent zeroing the data at CPU reset. 
+Within `CoreDump.c`, the `CoreDumpStore()` function stores the core dump data into the `_coreDumpData` structure previously placed into the `NoInit` section to prevent zeroing the data at CPU reset. 
 
 ```cpp
 void CoreDumpStore(uint32_t* stackPointer, const char* fileName,
@@ -422,16 +429,16 @@ void CoreDumpStore(uint32_t* stackPointer, const char* fileName,
 }
 ```
 
-The `_coreDumpData` uses two key values to determine if the core dump data is already valid. On a cold boot, the key values will be set to some random value. On a core dump induced warm boot, the key values will be set to KEY_CORE_DUMP_STORED. The validity of the RAM code dump data is determined by using the keys values. 
+The `_coreDumpData` uses two key values to determine if the core dump data is already valid. On a cold boot, the key values will be set to some random value. On a core dump induced warm boot, the key values will be set to `KEY_CORE_DUMP_STORED`. The validity of the RAM code dump data is determined by using the keys values. 
 
 For a hardware exception, a stack pointer is provided to `CoreDumpStore()`. This allows the CPU register values (automatically pushed onto the stack by the processor) to be extracted and placed into the core dump data structure. 
-The file name and line number where the assert macro test failed is also saved. Optionally an auxCode can be used which can be used to store error codes into the crash data using the ASSERT_TRUE_AUX macro. 
+The file name and line number where the assert macro test failed is also saved. Optionally an auxCode can be used which can be used to store error codes into the crash data using the `ASSERT_TRUE_AUX` macro. 
 
 # Stack Capture (no frame pointer)
 
 The last thing `CoreDumpStore()` does is store the active call stack by calling `StoreCallStack()`. This function starts at the top of the stack and works its way down storing any value that fits within the flash address range. The idea is that any number stored inside the stack that lies between `FLASH_BASE` and `FLASH_END` is likely to be a return address pushed during a function call. 
 
-The problem is the code really doesn’t have any idea where these return addresses are located. The top of the stack is easily obtained, but not the precise locations of the return addresses inside the stack. Therefore, checking each 32-bit value against the flash address range is bound to pickup those return address buried inside. 
+The problem is the core dump code really doesn’t have any idea where these return addresses are located. The top of the stack is easily obtained, but not the precise locations of the return addresses inside the stack. Therefore, checking each 32-bit value against the flash address range is bound to pickup those return address buried inside. 
 
 ```cpp
 static void StoreCallStack(uint32_t* stackPointer, uint32_t* stackStoreArr, int stackStoreArrLen)
@@ -474,7 +481,7 @@ static void StoreCallStack(uint32_t* stackPointer, uint32_t* stackStoreArr, int 
 }
 ```
 
-The search for return addresses within the stack continues until either the maximum depth is reached or the start of stack markers are found. Recall `EFEFEFEF` markers are placed in main(). When found, the stack start is reached and searching is stopped. Using this simple pattern at every thread entry point offers an easy means to terminate the search. 
+The search for return addresses within the stack continues until either the maximum depth is reached or the start of stack markers are found. Recall `EFEFEFEF` markers are placed in `main()`. When found, the stack start is reached and searching is stopped. Using this simple pattern at every thread entry point offers an easy means to terminate the search. Some operating systems may already place marker patterns at the top/bottom of stack to assist with stack overrun detection.
 
 Now the algorithm isn’t perfect. Sometimes those seemingly valid return addresses are left over from previous function calls. The stack expands and contracts as the program executes, so some return addresses values may be stale. However, in practice this really isn’t a problem. When you capture say a 10 level deep call stack, the fact that one address is nonsensical doesn’t diminish its usefulness. Clearly using a bit of common sense a developer can examine the decoded call stack and ignore an errant function call and still gain a useful understanding of the failure. 
 
@@ -487,11 +494,11 @@ An alternative stack capture algorithm can be created if your compiler embeds fr
 The frame pointers are marked in red. Notice that the frame pointers point to a return address location further down into the stack making a linked list of frames. For instance, `200003D4` points to function return address `080003DB`.
 It's not very difficult to create an alternate algorithm that seeks out the frame pointers and uses those to more effectively extract the return addresses. A valid frame pointer must point further down into the stack but not past the stack start. If the frame pointer fails the check, skip and move to the next value. If the linked list of frame pointers ends up at the `EFEFEFEF` marker, then the algorithm correctly followed the chain. 
 
-The advantage of this algorithm is that once the code syncs up with the frame pointer linked list, it can jump over large chunks of stack variables making it faster. It can also give slightly better call stack results under some conditions. The other algorithm just uses brute force examination of each 32-bit value picking off addresses that lay within the flash range making it more generic. 
+The advantage of this algorithm is that once the code syncs up with the frame pointer linked list, it can jump over large chunks of stack variables making it faster. It can also give slightly better call stack results under some conditions. The presented algorithm just uses brute force examination of each 32-bit value picking off addresses that lay within the flash range making it more generic.
 
 # After Reboot
 
-After the core dump is stored, the processor reboots. The `IsCoreDumpStored()` function checks to see if a core dump has been stored at startup. If so, `CoreDumpGet()` is used to get the crash data in readiness for persistence or transmission. CoreDumpReset() resets the key values in readiness for the next crash. 
+After the core dump is stored, the processor reboots. The `IsCoreDumpStored()` function checks to see if a core dump has been stored at startup. If so, `CoreDumpGet()` is used to get the crash data in readiness for persistence or transmission. `CoreDumpReset()` resets the key values in readiness for the next crash. 
 
 ```cpp
 int main(void)
@@ -534,7 +541,7 @@ Viewing a crash dump within the debugger shows all the data gathered during the 
  
 # Dump.txt
 
-When extracting the core dump data from the target, it needs to be analyzed on a PC. The core dump data stored or transmitted by the target is going to be compact, but when sent to another host with a file system (flash or HDD), the transmitted core dump data is translated to a text file. The format of the text file is unimportant. It only needs to be easy enough to parse using a core dump decoder tool of your own design. The example below shows a dump.txt file contents.
+When extracting the core dump data from the target, it needs to be analyzed on a PC. The core dump data stored or transmitted by the target is going to be compact, but when sent to another host with a file system (flash or HDD), the transmitted core dump data is translated to a text file. The format of the text file is unimportant. It only needs to be easy enough to parse using a core dump decoder tool of your own design. The example below shows a `dump.txt` file contents after translating `CoreDumpData` structure into a text file at startup after a crash.
 
 ```txt
 Type: Software Assertion
@@ -574,9 +581,33 @@ Stack 10: 0x80133dd
 
 # Dump.txt Decoder
 
-To automate the decoding of dump.txt files, create a custom a PC-based tool to parse the stack addresses and send each one to the address-to-line tool. For instance, a command line tool that you create would take the executable image and a dump text file. The tool automatically parses the addresses and outputs a file/line for each Stack entry. 
+To automate the decoding of `dump.txt` files, create a custom a PC-based tool to parse the stack addresses and send each one to the address-to-line tool. For instance, a command line tool that you create takes the executable image and a dump text file. The tool automatically parses the addresses and outputs a file/line for each Stack entry. 
 
 `dump_decoder.exe --exe MyApp.axf --txt dump.txt`
+
+The `dump_decoder.exe` implementation is just automating extracting each address from the `dump.txt` file and calling the `addr2line` tool over and over and outputting the translated addresses. For instance, programmatically decoding the stack above is essentially capturing the output of:
+
+```txt
+addr2line -f -C --exe=MyApp.axf 0x8023c28    // Stack 0
+addr2line -f -C --exe=MyApp.axf 0x8035e58    // Stack 1
+addr2line -f -C --exe=MyApp.axf 0x80238d5    // Stack 2
+etc...
+```
+
+And outputting decoded address to a file such as:
+
+```txt
+0: CoreDumpStore()      // Stack 0
+    CoreDump.cpp:85
+
+1: FaultHandler()       // Stack 1
+    Fault.cpp:7
+
+2: Call3()              // Stack 2
+    main.cpp:27
+
+etc...
+```
 
 # OS Support
 
