@@ -34,7 +34,7 @@ By its nature, a core dump is a very platform-specific feature that changes base
 
 An embedded core dump follows a process starting at the crash event until a developer decodes the crash data for crash analysis. 
 
-1.	Crash occurs (either from an software assertion or hardware exception)
+1.	Crash occurs (either from a software assertion or hardware exception)
 2.	Store crash soruce code location file name and line number into non-initialized RAM
 3.	Store call stack addresses and critical processor registers into non-initialized RAM
 4.	Store unique crash dump key in non-initialized RAM
@@ -81,7 +81,7 @@ A core dump requires tools and techniques that are less well known but critical 
 
 An address-to-line utility is critical to the core dump decoding. The tool converts an address to a source code file name and line number. During the core dump, numerous address locations are stored. To translate each address to a file/line requires this tool. 
 
-Many compiler tool chains come with this utility. For those that do not, you still may be able to find one. For instance, Keil didn’t come with this tool but the GNU Binary Utilities (binutils) within the GCC toolchain has an addr2line.exe that's compatible with Keil ARM AXF files (and IAR OUT files). An AXF (OUT) file is the compiler output containing both object code and debug information. The `addr2line` tool takes an executable image file and an address and outputs a source code file name and line number. The one I'm using for ARM is part of the Cygwin binutils package installation. The GCC compiler supports many processors so check the GCC binutils if your compiler doesn't already have this utility. 
+Many compiler tool chains come with this utility. For those that do not, you still may be able to find one. For instance, Keil didn’t come with this tool but the GNU Binary Utilities (binutils) within the GCC toolchain has an `addr2line.exe` that's compatible with Keil ARM AXF files (and IAR OUT files). An AXF (OUT) file is the compiler output containing both object code and debug information. The `addr2line` tool takes an executable image file and an address and outputs a source code file name and line number. The one I'm using for ARM is part of the Cygwin binutils package installation. The GCC compiler supports many processors so check the GCC binutils if your compiler doesn't already have this utility. 
 
 ## No zero-initialize RAM section
 
