@@ -77,7 +77,7 @@ A core dump requires tools and techniques that are less well known but critical 
 3.	Persistent storage or communication interface
 4.	Debugger with memory view
 
-# Address-to-Line
+## Address-to-Line
 
 An address-to-line utility is critical to the core dump decoding. The tool converts an address to a source code file name and line number. During the core dump, numerous address locations are stored. To translate each address to a file/line requires this tool. 
 
