@@ -249,7 +249,7 @@ int main(void)
     // Create call stack by calling a few functions
     Call1();
 
-    return 0;
+    return stackArr0[0];
 }
 ```
 
