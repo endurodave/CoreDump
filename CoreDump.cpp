@@ -115,7 +115,8 @@ static void SaveActiveCallStack(int depth)
     for (int i = 0; i < saveCount; ++i) 
     {
         _coreDumpData.ActiveCallStack[i] = reinterpret_cast<INTEGER_TYPE>(callStack[i]);
-        // Optionally, you can print the function names using SymFromAddr
+        // Optionally, you can store the function names instead of function addresses
+        // using SymFromAddr
     }
 
     // Clean up the symbol handler
