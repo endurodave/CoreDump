@@ -780,7 +780,7 @@ If you stopped here and implemented the core dump as explained so far, you'd hav
 1.	Store call stacks for all threads
 2.	Store the mutex/semaphore owner and blocking threads
 
-These features require accessing the OS task control block (TCB). Typically, a TCB structure exists for each system thread. Each thread has its own stack and the TCB contains, among other things, a thread stack pointer. The `StoreThreadCallStacks()` example shown below is for Keil RTX. The function iterates over all TCB structures and saves the call stack for each thread by calling `StoreCallStack()` repeatedly using each thread's `p_TCB->tsk_stack`.
+These features require accessing the OS task control block (TCB) on an embedded operating system. Typically, a TCB structure exists for each system thread. Each thread has its own stack and the TCB contains, among other things, a thread stack pointer. The `StoreThreadCallStacks()` example shown below is for Keil RTX. The function iterates over all TCB structures and saves the call stack for each thread by calling `StoreCallStack()` repeatedly using each thread's `p_TCB->tsk_stack`.
 
 ```cpp
 static void StoreThreadCallStacks()
