@@ -35,6 +35,14 @@
 // TODO: How many operating system tasks to store within the core dump.
 #define OS_TASKCNT  5
 
+#if (SIZE_MAX == UINT32_MAX)
+#define INTEGER_TYPE int32_t
+#elif (SIZE_MAX == UINT64_MAX)
+#define INTEGER_TYPE int64_t
+#else
+#error "Unsupported platform: unable to determine the size of uintptr_t"
+#endif
+
 enum FaultType
 {
     FAULT_EXCEPTION,        // Hardware exception
@@ -65,10 +73,10 @@ public:
     uint32_t XPSR_register;
 #endif
 
-    uint32_t ActiveCallStack[CALL_STACK_SIZE];
+    INTEGER_TYPE ActiveCallStack[CALL_STACK_SIZE];
 
 #ifdef USE_OPERATING_SYSTEM
-    uint32_t ThreadCallStacks[OS_TASKCNT][CALL_STACK_SIZE];
+    INTEGER_TYPE ThreadCallStacks[OS_TASKCNT][CALL_STACK_SIZE];
 #endif
 };
 
@@ -77,7 +85,7 @@ public:
 /// @param[in] fileName - file name causing error
 /// @param[in] lineNumber - line number causing error
 /// @param[in] auxCode - any additional number, or 0
-void CoreDumpStore(uint32_t* stackPointer, const char* fileName,
+void CoreDumpStore(INTEGER_TYPE* stackPointer, const char* fileName,
     uint32_t lineNumber, uint32_t auxCode);
 
 /// Get the core dump saved state

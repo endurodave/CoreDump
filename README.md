@@ -6,17 +6,21 @@ A core dump framework that stores crash information including call stacks on any
 
 Embedded software development can be quite difficult, especially when trying to solve intermittent software failures. A core dump, or sometimes called a crash dump, is a means of capturing a "snapshot" of the CPU and software state at moment of failure. Whereas large, full-featured operating systems like Windows and Linux already have built-in crash dump capabilities, embedded systems typically aren't equipped with such luxuries. Yet these systems are the ones most in need of a post-mortem diagnostic utility. Embedded systems are increasingly complex with threads, drivers, interrupts and lots of low-level custom crafted code – things are bound to go wrong in difficult to diagnose ways. 
 
-The techniques discussed within this article show exactly how to create a very useful core dump feature with a minimal amount of code. Generic algorithms are suitable for almost any CPU. No specific hardware is required to implement the techniques shown here. This article covers the following topics.
+The techniques discussed within this article show exactly how to create a very useful core dump feature with a minimal amount of code. Generic algorithms are suitable for almost any CPU. No specific hardware is required to implement the techniques shown here. 
+
+Multiple techniques are used to store a call stack during a crash. Linux, GCC, Windows, and a "brute force" algorithm that requires no library.
+
+This article covers the following topics.
 
 1.	Core dump development tool requirements
-2.	Storing the active call stack
+2.	Storing the active call stack (multiple techniques)
 3.	Storing call stack for all threads
 4.	Storing hardware exception registers
 5.	Tapping into the OS task control block (TCB)
 6.	Core dump persistence and transmission
 7.	Core dump analysis
 
-The Core dump source code builds on any compiler. Serach for `TODO` comments for platform-specific implementation details that must be implemented for deployment.
+The Core Dump source code builds on any compiler. Search for `TODO` comments for platform-specific implementation details that must be implemented for deployment.
 
 After reading this article, you'll have a full understanding of the techniques used to implement a core dump utility for your project.  
 
@@ -35,7 +39,7 @@ By its nature, a core dump is a very platform-specific feature that changes base
 An embedded core dump follows a process starting at the crash event until a developer decodes the crash data for crash analysis. 
 
 1.	Crash occurs (either from a software assertion or hardware exception)
-2.	Store crash soruce code location file name and line number into non-initialized RAM
+2.	Store crash source code location file name and line number into non-initialized RAM
 3.	Store call stack addresses and critical processor registers into non-initialized RAM
 4.	Store unique crash dump key in non-initialized RAM
 5.	Programmatically reboot CPU
@@ -54,7 +58,7 @@ The core dump API is shown below:
 /// @param[in] fileName - file name causing error
 /// @param[in] lineNumber - line number causing error
 /// @param[in] auxCode - any additional number, or 0
-void CoreDumpStore(uint32_t* stackPointer, const char* fileName,
+void CoreDumpStore(INTEGER_TYPE* stackPointer, const char* fileName,
     uint32_t lineNumber, uint32_t auxCode);
 
 /// Get the core dump saved state
@@ -125,10 +129,10 @@ public:
     uint32_t XPSR_register;
 #endif
 
-    uint32_t ActiveCallStack[CALL_STACK_SIZE];
+    INTEGER_TYPE ActiveCallStack[CALL_STACK_SIZE];
 
 #ifdef USE_OPERATING_SYSTEM
-    uint32_t ThreadCallStacks[OS_TASKCNT][CALL_STACK_SIZE];
+    INTEGER_TYPE ThreadCallStacks[OS_TASKCNT][CALL_STACK_SIZE];
 #endif
 };
 ```
@@ -306,7 +310,7 @@ The command line arguments to `addr2line` requires the software executable (i.e.
 
 # Fault Handling
 
-Now that we’ve created our fault test code, let’s see how to extract and store the call stack. `Fault.c` contains code to handle system faults. The assert macros (e.g. `ASSERT_TRUE`) calls `FaultHandler()` if the check fails. The function just stores the crash information and resets the processor. 
+Now that we’ve created our fault test code, let’s see how to extract and store the call stack. `Fault.c` contains code to handle system faults. The assert macros (e.g. `ASSERT_TRUE`) calls `FaultHandler()` if the check fails. The function stores the crash information and resets the processor including the file name and line number of the assertion fail. 
 
 ```cpp
 void FaultHandler(const char* file, unsigned short line)
@@ -329,7 +333,7 @@ void HardFaultHandler(void)
 	// TODO: Called if a hardware exception is generated. Platform 
 	// specific detail. Connect exceptions to call this function.
 
-#if 0 // ARM example begin
+#if 0 // ARM example begin:
 	// Determine if main stack or process stack is being used. Bit 2 of the 
 	// LR (link register) indicates if MSP or PSP stack is used.
 	if ((LR & 0x4) == 0)
@@ -338,8 +342,8 @@ void HardFaultHandler(void)
 		stackPointer = (unsigned int*)PSP;
 #endif // ARM example end
 
-	uint32_t* stackPointer = nullptr;	// TODO: Store the current stack pointer here
-	uint32_t vectorNum = 0;				// TODO: Store the exection vector number here
+	INTEGER_TYPE* stackPointer = nullptr;	// TODO: Store the current stack pointer here
+	uint32_t vectorNum = 0;					// TODO: Store the exception vector number here
 
 	// Store hardware exception core dump data
 	CoreDumpStore(stackPointer, __FILE__, __LINE__, vectorNum);
@@ -354,7 +358,8 @@ void HardFaultHandler(void)
 Within `CoreDump.c`, the `CoreDumpStore()` function stores the core dump data into the `_coreDumpData` structure previously placed into the `NoInit` section to prevent zeroing the data at CPU reset. 
 
 ```cpp
-void CoreDumpStore(uint32_t* stackPointer, const char* fileName,
+// Store core dump data into RAM
+void CoreDumpStore(INTEGER_TYPE* stackPointer, const char* fileName,
     uint32_t lineNumber, uint32_t auxCode)
 {
     // Is a core dump already stored? Then don't overwrite. The first  
@@ -424,28 +429,49 @@ void CoreDumpStore(uint32_t* stackPointer, const char* fileName,
         // Get current stack location using SP register
         // TODO: Obtaining registers and storing is a platform-specific implementation detail.
         // See your CPU processor, BSP, and/or compiler documentation.
-        stackPointer = (uint32_t*)SP;
+        stackPointer = (INTEGER_TYPE*)SP;
 #endif
     }
 
     // Save the current call stack
+#ifdef USE_BUILTIN_BACKTRACE
+    SaveActiveCallStack();
+#elif defined(USE_LINUX_BACKTRACE) || defined(USE_WINDOWS_BACKTRACE)
+    SaveActiveCallStack(CALL_STACK_SIZE);
+#else
     StoreCallStack(stackPointer, &_coreDumpData.ActiveCallStack[0], CALL_STACK_SIZE);
+#endif
 }
 ```
 
-The `_coreDumpData` uses two key values to determine if the core dump data is already valid. On a cold boot, the key values will be set to some random value. On a core dump induced warm boot, the key values will be set to `KEY_CORE_DUMP_STORED`. The validity of the RAM code dump data is determined by using the keys values. 
+The `_coreDumpData` uses two key values to determine if the core dump data is already valid. On a cold boot, the key values will be set to a random value. On a core dump induced warm boot, the key values will be set to `KEY_CORE_DUMP_STORED`. The validity of the RAM code dump data is determined by using the keys values. 
 
 For a hardware exception, a stack pointer is provided to `CoreDumpStore()`. This allows the CPU register values (automatically pushed onto the stack by the processor) to be extracted and placed into the core dump data structure. 
-The file name and line number where the assert macro test failed is also saved. Optionally an auxCode can be used which can be used to store error codes into the crash data using the `ASSERT_TRUE_AUX` macro. 
 
-# Stack Capture (no frame pointer)
+# Stack Backtrace
+
+Multiple variations of capturing a stack backtrace exist. The `Options.h` header selects which version to compile. Uncomment one option below, or by default use the default algorithm which requires no library support.
+
+```cpp
+// Define to use GCC __builtin_frame_address() for active call stack
+//#define USE_BUILTIN_BACKTRACE
+
+// Define to use GCC backtrace and backtrace_symbols for active call stack
+//#define USE_LINUX_BACKTRACE
+
+// Define to use Windows backtrace method. Must link with DbgHelp.lib.
+//#define USE_WINDOWS_BACKTRACE
+```
+
+## Stack Backtrace Capture (no frame pointer)
 
 The last thing `CoreDumpStore()` does is store the active call stack by calling `StoreCallStack()`. This function starts at the top of the stack and works its way down storing any value that fits within the flash address range. The idea is that any number stored inside the stack that lies between `FLASH_BASE` and `FLASH_END` is likely to be a return address pushed during a function call. 
 
-The problem is the core dump code really doesn’t have any idea where these return addresses are located. The top of the stack is easily obtained, but not the precise locations of the return addresses inside the stack. Therefore, checking each 32-bit value against the flash address range is bound to pickup those return address buried inside. 
+The problem is the core dump code really doesn’t have any idea where these return addresses are located. The top of the stack is easily obtained, but not the precise locations of the return addresses inside the stack. Therefore, iterating over the stack checking each 32-bit value against the flash address range will pickup the return addresses buried inside. Each found address is stored into an array of addresses within the core dump data structure.
 
 ```cpp
-static void StoreCallStack(uint32_t* stackPointer, uint32_t* stackStoreArr, int stackStoreArrLen)
+// Store call stack backtrace using manual algorithm; no library support routines required
+static void StoreCallStack(INTEGER_TYPE* stackPointer, INTEGER_TYPE* stackStoreArr, int stackStoreArrLen)
 {
     int stackDepth = 0;
     int depth = 0;
@@ -454,15 +480,15 @@ static void StoreCallStack(uint32_t* stackPointer, uint32_t* stackStoreArr, int 
     memset(stackStoreArr, 0, sizeof(uint32_t) * stackStoreArrLen);
 
     // Ensure the stack pointer is within RAM address range
-    if (((uint32_t)stackPointer < RAM_BEGIN || (uint32_t)stackPointer > RAM_END))
+    if (stackPointer < (INTEGER_TYPE*)RAM_BEGIN || stackPointer > (INTEGER_TYPE*)RAM_END)
         return;
 
     // Search the stack for address values within the flash address range. 
     // We're looking for stored LR (link register) values pushed onto the stack.
     for (depth = 0; depth < MAX_STACK_DEPTH_SEARCH; depth++)
     {
-        // Get a 32-bit value from the stack
-        uint32_t stackData = *(stackPointer + depth);
+        // Get a integer value from the stack
+        INTEGER_TYPE stackData = *(stackPointer + depth);
 
         // Have we reached the beginning of the stack?
         if (stackData == STACK_MARKER && *(stackPointer + depth + 1) == STACK_MARKER)
@@ -489,16 +515,150 @@ The search for return addresses within the stack continues until either the maxi
 
 Now the algorithm isn’t perfect. Sometimes those seemingly valid return addresses are left over from previous function calls. The stack expands and contracts as the program executes, so some return addresses values may be stale. However, in practice this really isn’t a problem. When you capture say a 10 level deep call stack, the fact that one address is nonsensical doesn’t diminish its usefulness. Clearly using a bit of common sense a developer can examine the decoded call stack and ignore an errant function call and still gain a useful understanding of the failure. 
 
-# Stack Capture (use frame pointer)
+## Stack Backtrace Capture (use frame pointer)
 
 An alternative stack capture algorithm can be created if your compiler embeds frame pointers into the stack. With Keil, turning on the frame pointer using the `--use_frame_pointer` compiler option yields this stack.
 
 ![Local Image](images/Figure4.png) 
  
 The frame pointers are marked in red. Notice that the frame pointers point to a return address location further down into the stack making a linked list of frames. For instance, `200003D4` points to function return address `080003DB`.
-It's not very difficult to create an alternate algorithm that seeks out the frame pointers and uses those to more effectively extract the return addresses. A valid frame pointer must point further down into the stack but not past the stack start. If the frame pointer fails the check, skip and move to the next value. If the linked list of frame pointers ends up at the `EFEFEFEF` marker, then the algorithm correctly followed the chain. 
 
-The advantage of this algorithm is that once the code syncs up with the frame pointer linked list, it can jump over large chunks of stack variables making it faster. It can also give slightly better call stack results under some conditions. The presented algorithm just uses brute force examination of each 32-bit value picking off addresses that lay within the flash range making it more generic.
+It's not very difficult to create an alternate algorithm that seeks out the frame pointers and uses those to more effectively extract the return addresses. A valid frame pointer must point further down into the stack but not past the stack start. If the frame pointer fails the check, skip and move to the next value. If the linked list of frame pointers ends up at the `EFEFEFEF` marker, then the algorithm correctly followed the call stack chain. 
+
+The advantage of this algorithm is that once the code syncs up with the frame pointer linked list, it can jump over large chunks of stack variables making it faster. It can also give slightly better call stack results under some conditions. The presented algorithm just uses brute force examination of each 32-bit value picking off addresses that lay within the flash range making for a generic solution.
+
+## Stack Backtrace Capture (Linux)
+
+The Linux version relies upon `backtrace` and `backtrace_symbol`. Optionally you could can store the function names instead of addresses using `symbols[i]`.
+
+```cpp
+#ifdef USE_LINUX_BACKTRACE
+#include <execinfo.h>
+#include <cstdlib>
+#include <iostream>
+
+static void SaveActiveCallStack(int depth)
+{
+    void* callStack[CALL_STACK_SIZE];
+    int frames = backtrace(callStack, depth);
+
+    if (frames <= 0) 
+    {
+        std::cerr << "Failed to retrieve call stack." << std::endl;
+        return;
+    }
+
+    char** symbols = backtrace_symbols(callStack, frames);
+    if (symbols == nullptr) 
+    {
+        std::cerr << "Failed to retrieve call stack symbols." << std::endl;
+        return;
+    }
+
+    // Only save up to CALL_STACK_SIZE addresses.
+    int saveCount = std::min(CALL_STACK_SIZE, frames);
+
+    for (int i = 0; i < saveCount; ++i) 
+    {
+        _coreDumpData.ActiveCallStack[i] = reinterpret_cast<INTEGER_TYPE>(callStack[i]);
+        // Optionally, you can print the function names using symbols[i]
+        // std::cout << symbols[i] << std::endl;
+    }
+
+    free(symbols);
+}
+#endif
+```
+
+## Stack Backtrace Capture (GCC)
+
+The GCC version relies upon `__builtin_frame_address()` compiler-specific built-in function. 
+
+```cpp
+#define SAVE_STACK_ADDRESS(idx) \
+	{ \
+        void* frameAddr##idx = __builtin_frame_address (idx); \
+	    if (frameAddr##idx != NULL) { \
+		    void* returnAddr##idx = __builtin_frame_address (idx); \
+		    if (returnAddr##idx != NULL) \
+			    _coreDumpData.ActiveCallStack[idx] = (INTEGER_TYPE)returnAddr##idx; \
+		    else { \
+			    goto stack_save_complete; \
+		    } \
+	    } \
+	    else { \
+		    goto stack_save_complete; \
+	    } \
+    }
+
+#ifdef USE_BUILTIN_BACKTRACE
+// Store active call stack using GCC __builtin_frame_address()
+static void SaveActiveCallStack(void)
+{
+    // Save the call stack addresses into _coreDumpData->ActiveCallStack. 
+    // Only save CALL_STACK_SIZE addresses.
+    SAVE_STACK_ADDRESS(0)
+    SAVE_STACK_ADDRESS(1)
+    SAVE_STACK_ADDRESS(2)
+    SAVE_STACK_ADDRESS(3)
+    SAVE_STACK_ADDRESS(4)
+    SAVE_STACK_ADDRESS(5)
+    SAVE_STACK_ADDRESS(6)
+    SAVE_STACK_ADDRESS(7)
+stack_save_complete:
+    return;
+}
+#endif
+```
+
+## Stack Backtrace Capture (Windows)
+
+The Windows example shows how to store the call stack addresses, or better, the code could be updated to store the actual function name using `SymFromAddr`.
+
+```cpp
+#ifdef USE_WINDOWS_BACKTRACE
+#include <windows.h>
+#include <iostream>
+#include <DbgHelp.h>
+#include <algorithm>
+
+// Undefine the Windows macro (if defined)
+#ifdef min
+#undef min
+#endif
+
+// Store call stack backtrace using Windows support library
+// Must link with DbgHelp.lib
+static void SaveActiveCallStack(int depth)
+{
+    void* callStack[CALL_STACK_SIZE];
+    HANDLE process = GetCurrentProcess();
+
+    // Initialize the symbol handler
+    SymInitialize(process, NULL, TRUE);
+
+    // Capture the call stack
+    USHORT frames = CaptureStackBackTrace(0, depth, callStack, NULL);
+
+    // Only save up to CALL_STACK_SIZE addresses.
+    int saveCount = std::min(CALL_STACK_SIZE, static_cast<int>(frames));
+
+    for (int i = 0; i < saveCount; ++i) 
+    {
+        _coreDumpData.ActiveCallStack[i] = reinterpret_cast<INTEGER_TYPE>(callStack[i]);
+        // Optionally, you can store the function names instead of function addresses
+        // using SymFromAddr
+    }
+
+    // Clean up the symbol handler
+    SymCleanup(process);
+}
+#endif
+```
+
+## Other Stack Backtrace Options
+
+Check your compiler documentation for alternative means of capturing a call stack backtrace.
 
 # After Reboot
 
@@ -525,8 +685,8 @@ int main(void)
         CoreDumpData* coreDumpData = CoreDumpGet();
 
         // TODO: Save core dump to persistent storage or transmit.
-        // the data to a remote device. Platform-specific implementation detail
-        // on where to persist the RAM core dump data to a permanent storage device.
+        // Platform-specific implementation detail on where to persist the RAM
+        // core dump data to a permanent storage device.
 
         // Reset core dump for next time. 
         CoreDumpReset();
@@ -585,29 +745,29 @@ Stack 10: 0x80133dd
 
 # Dump.txt Decoder
 
-To automate the decoding of `dump.txt` files, create a custom a PC-based tool to parse the stack addresses and send each one to the address-to-line tool. For instance, a command line tool that you create takes the executable image and a dump text file. The tool automatically parses the addresses and outputs a file/line for each Stack entry. 
+To automate the decoding of `dump.txt` files, create a custom a PC-based tool to parse the stack addresses and send each one to the address-to-line tool. For instance, a command line tool that you create takes the executable image and a dump text file. The tool automatically parses the addresses and outputs a file/line for each `Stack X` entry. 
 
 `dump_decoder.exe --exe MyApp.axf --txt dump.txt`
 
 The `dump_decoder.exe` implementation is just automating extracting each address from the `dump.txt` file and calling the `addr2line` tool over and over and outputting the translated addresses. For instance, programmatically decoding the stack above is essentially capturing the output of:
 
 ```txt
-addr2line -f -C --exe=MyApp.axf 0x8023c28    // Stack 0
-addr2line -f -C --exe=MyApp.axf 0x8035e58    // Stack 1
-addr2line -f -C --exe=MyApp.axf 0x80238d5    // Stack 2
+addr2line -f -C --exe=MyApp.axf 0x8023c28    // Stack 0 address
+addr2line -f -C --exe=MyApp.axf 0x8035e58    // Stack 1 address
+addr2line -f -C --exe=MyApp.axf 0x80238d5    // Stack 2 address
 etc...
 ```
 
-And outputting decoded address to a file such as:
+The decoded address output is:
 
 ```txt
-0: CoreDumpStore()      // Stack 0
+0: CoreDumpStore()      // Stack 0 function
     CoreDump.cpp:85
 
-1: FaultHandler()       // Stack 1
+1: FaultHandler()       // Stack 1 function
     Fault.cpp:7
 
-2: Call3()              // Stack 2
+2: Call3()              // Stack 2 function
     main.cpp:27
 
 etc...

@@ -73,8 +73,8 @@ int main(void)
         CoreDumpData* coreDumpData = CoreDumpGet();
 
         // TODO: Save core dump to persistent storage or transmit.
-        // the data to a remote device. Platform-specific implementation detail
-        // on where to persist the RAM core dump data to a permanent storage device.
+        // Platform-specific implementation detail on where to persist the RAM 
+        // core dump data to a permanent storage device.
 
         // Reset core dump for next time. 
         CoreDumpReset();

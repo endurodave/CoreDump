@@ -2,6 +2,22 @@
 #include "Options.h"
 #include <cstring>
 
+#define SAVE_STACK_ADDRESS(idx) \
+	{ \
+        void* frameAddr##idx = __builtin_frame_address (idx); \
+	    if (frameAddr##idx != NULL) { \
+		    void* returnAddr##idx = __builtin_frame_address (idx); \
+		    if (returnAddr##idx != NULL) \
+			    _coreDumpData.ActiveCallStack[idx] = (INTEGER_TYPE)returnAddr##idx; \
+		    else { \
+			    goto stack_save_complete; \
+		    } \
+	    } \
+	    else { \
+		    goto stack_save_complete; \
+	    } \
+    }
+
 // Core dump data stored in RAM.
 // TODO: This data structure must not be zero-initialized at startup!
 // The data stored here must persist through a CPU reset. Platform-specific 
@@ -13,7 +29,102 @@
 // section to hold the CoreDumpData below.
 static CoreDumpData _coreDumpData;
 
-static void StoreCallStack(uint32_t* stackPointer, uint32_t* stackStoreArr, int stackStoreArrLen)
+#ifdef USE_BUILTIN_BACKTRACE
+// Store active call stack using GCC __builtin_frame_address()
+static void SaveActiveCallStack(void)
+{
+    // Save the call stack addresses into _coreDumpData->ActiveCallStack. 
+    // Only save CALL_STACK_SIZE addresses.
+    SAVE_STACK_ADDRESS(0)
+    SAVE_STACK_ADDRESS(1)
+    SAVE_STACK_ADDRESS(2)
+    SAVE_STACK_ADDRESS(3)
+    SAVE_STACK_ADDRESS(4)
+    SAVE_STACK_ADDRESS(5)
+    SAVE_STACK_ADDRESS(6)
+    SAVE_STACK_ADDRESS(7)
+stack_save_complete:
+    return;
+}
+#endif
+
+#ifdef USE_LINUX_BACKTRACE
+#include <execinfo.h>
+#include <cstdlib>
+#include <iostream>
+
+static void SaveActiveCallStack(int depth)
+{
+    void* callStack[CALL_STACK_SIZE];
+    int frames = backtrace(callStack, depth);
+
+    if (frames <= 0) 
+    {
+        std::cerr << "Failed to retrieve call stack." << std::endl;
+        return;
+    }
+
+    char** symbols = backtrace_symbols(callStack, frames);
+    if (symbols == nullptr) 
+    {
+        std::cerr << "Failed to retrieve call stack symbols." << std::endl;
+        return;
+    }
+
+    // Only save up to CALL_STACK_SIZE addresses.
+    int saveCount = std::min(CALL_STACK_SIZE, frames);
+
+    for (int i = 0; i < saveCount; ++i) 
+    {
+        _coreDumpData.ActiveCallStack[i] = reinterpret_cast<INTEGER_TYPE>(callStack[i]);
+        // Optionally, you can print the function names using symbols[i]
+        // std::cout << symbols[i] << std::endl;
+    }
+
+    free(symbols);
+}
+#endif
+
+#ifdef USE_WINDOWS_BACKTRACE
+#include <windows.h>
+#include <iostream>
+#include <DbgHelp.h>
+#include <algorithm>
+
+// Undefine the Windows macro (if defined)
+#ifdef min
+#undef min
+#endif
+
+// Store call stack backtrace using Windows support library
+// Must link with DbgHelp.lib
+static void SaveActiveCallStack(int depth)
+{
+    void* callStack[CALL_STACK_SIZE];
+    HANDLE process = GetCurrentProcess();
+
+    // Initialize the symbol handler
+    SymInitialize(process, NULL, TRUE);
+
+    // Capture the call stack
+    USHORT frames = CaptureStackBackTrace(0, depth, callStack, NULL);
+
+    // Only save up to CALL_STACK_SIZE addresses.
+    int saveCount = std::min(CALL_STACK_SIZE, static_cast<int>(frames));
+
+    for (int i = 0; i < saveCount; ++i) 
+    {
+        _coreDumpData.ActiveCallStack[i] = reinterpret_cast<INTEGER_TYPE>(callStack[i]);
+        // Optionally, you can print the function names using SymFromAddr
+    }
+
+    // Clean up the symbol handler
+    SymCleanup(process);
+}
+#endif
+
+// Store call stack backtrace using manual algorithm; no library support routines required
+static void StoreCallStack(INTEGER_TYPE* stackPointer, INTEGER_TYPE* stackStoreArr, int stackStoreArrLen)
 {
     int stackDepth = 0;
     int depth = 0;
@@ -22,15 +133,15 @@ static void StoreCallStack(uint32_t* stackPointer, uint32_t* stackStoreArr, int 
     memset(stackStoreArr, 0, sizeof(uint32_t) * stackStoreArrLen);
 
     // Ensure the stack pointer is within RAM address range
-    if (((uint32_t)stackPointer < RAM_BEGIN || (uint32_t)stackPointer > RAM_END))
+    if (stackPointer < (INTEGER_TYPE*)RAM_BEGIN || stackPointer > (INTEGER_TYPE*)RAM_END)
         return;
 
     // Search the stack for address values within the flash address range. 
     // We're looking for stored LR (link register) values pushed onto the stack.
     for (depth = 0; depth < MAX_STACK_DEPTH_SEARCH; depth++)
     {
-        // Get a 32-bit value from the stack
-        uint32_t stackData = *(stackPointer + depth);
+        // Get a integer value from the stack
+        INTEGER_TYPE stackData = *(stackPointer + depth);
 
         // Have we reached the beginning of the stack?
         if (stackData == STACK_MARKER && *(stackPointer + depth + 1) == STACK_MARKER)
@@ -71,7 +182,7 @@ static void StoreThreadCallStacks()
             continue;
 
         P_TCB p_TCB = (P_TCB)(os_active_TCB[t]);
-        uint32_t* stackPointer = p_TCB->tsk_stack;
+        INTEGER_TYPE* stackPointer = p_TCB->tsk_stack;
 
         // Store the call stack for this task
         StoreCallStack(stackPointer, &_coreDumpData.ThreadCallStacks[taskCnt][0], CALL_STACK_SIZE);
@@ -82,7 +193,8 @@ static void StoreThreadCallStacks()
 #endif
 }
 
-void CoreDumpStore(uint32_t* stackPointer, const char* fileName,
+// Store core dump data into RAM
+void CoreDumpStore(INTEGER_TYPE* stackPointer, const char* fileName,
     uint32_t lineNumber, uint32_t auxCode)
 {
     // Is a core dump already stored? Then don't overwrite. The first  
@@ -152,12 +264,18 @@ void CoreDumpStore(uint32_t* stackPointer, const char* fileName,
         // Get current stack location using SP register
         // TODO: Obtaining registers and storing is a platform-specific implementation detail.
         // See your CPU processor, BSP, and/or compiler documentation.
-        stackPointer = (uint32_t*)SP;
+        stackPointer = (INTEGER_TYPE*)SP;
 #endif
     }
 
     // Save the current call stack
+#ifdef USE_BUILTIN_BACKTRACE
+    SaveActiveCallStack();
+#elif defined(USE_LINUX_BACKTRACE) || defined(USE_WINDOWS_BACKTRACE)
+    SaveActiveCallStack(CALL_STACK_SIZE);
+#else
     StoreCallStack(stackPointer, &_coreDumpData.ActiveCallStack[0], CALL_STACK_SIZE);
+#endif
 }
 
 bool IsCoreDumpSaved()
