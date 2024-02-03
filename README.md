@@ -6,9 +6,9 @@ A core dump framework that stores crash information including call stacks on any
 
 Embedded software development can be quite difficult, especially when trying to solve intermittent software failures. A core dump, or sometimes called a crash dump, is a means of capturing a "snapshot" of the CPU and software state at moment of failure. Whereas large, full-featured operating systems like Windows and Linux already have built-in crash dump capabilities, embedded systems typically aren't equipped with such luxuries. Yet these systems are the ones most in need of a post-mortem diagnostic utility. Embedded systems are increasingly complex with threads, drivers, interrupts and lots of low-level custom crafted code – things are bound to go wrong in difficult to diagnose ways. 
 
-The techniques discussed within this article show exactly how to create a very useful core dump feature with a minimal amount of code. Generic algorithms are suitable for almost any CPU. No specific hardware is required to implement the techniques shown here. 
+The techniques discussed within this article show exactly how to create a very useful core dump feature with a minimal amount of code. Generic algorithms are suitable for almost any CPU. The core dump is integrated into the application and captures crash data without a debugger. The captured data is used for a post-mortem analysis of the runtime failure. No specific hardware is required to implement the techniques shown here. 
 
-Multiple techniques are used to store a call stack during a crash. Linux, GCC, Windows, and a "brute force" algorithm that requires no library.
+Multiple techniques are used to store a call stack during a crash. This is mostly an embedded technique, but Linux, GCC, Windows, and a "brute force" algorithm that requires no library are included. 
 
 This article covers the following topics.
 
