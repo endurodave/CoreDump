@@ -24,6 +24,12 @@ This article covers the following topics.
 
 The Core Dump source code builds on any compiler. Search for `TODO` comments for platform-specific implementation details that must be implemented for deployment.
 
+Two versions of the core dump design. This repo is a generic implementation suitable for custom modification onto any target device. The source code will build using any C++ toolchain with conditional compilation options to enable features based on the target. 
+
+The second repo is a full concrete implementation for an ARM STM32F103. See the link below for the ARM-specific source code.
+
+[Core Dump ARM](https://github.com/endurodave/CoreDumpARM)
+
 After reading this article, you'll have a full understanding of the techniques used to implement a core dump utility for your project.  
 
 # Background
