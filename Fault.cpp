@@ -17,17 +17,17 @@ void HardFaultHandler(void)
 	// TODO: Called if a hardware exception is generated. Platform 
 	// specific detail. Connect exceptions to call this function.
 
-#if 0 // ARM example begin:
+	INTEGER_TYPE* stackPointer = nullptr;	// TODO: Store the current stack pointer here
+	uint32_t vectorNum = 0;					// TODO: Store the exception vector number here
+
+#ifdef USE_HARDWARE
 	// Determine if main stack or process stack is being used. Bit 2 of the 
 	// LR (link register) indicates if MSP or PSP stack is used.
 	if ((LR & 0x4) == 0)
 		stackPointer = (unsigned int*)MSP;
 	else
 		stackPointer = (unsigned int*)PSP;
-#endif // ARM example end
-
-	INTEGER_TYPE* stackPointer = nullptr;	// TODO: Store the current stack pointer here
-	uint32_t vectorNum = 0;					// TODO: Store the exception vector number here
+#endif
 
 	// Store hardware exception core dump data
 	CoreDumpStore(stackPointer, __FILE__, __LINE__, vectorNum);

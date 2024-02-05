@@ -6,7 +6,6 @@
 
 #include "Fault.h"
 #include "CoreDump.h"
-#include "Options.h"
 
 #ifdef HARD_FAULT_TEST
 static int val = 2, zero = 0, result;

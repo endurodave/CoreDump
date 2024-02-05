@@ -1,6 +1,7 @@
 #ifndef _CORE_DUMP_H
 #define _CORE_DUMP_H
 
+#include "Options.h"
 #include <stdint.h>
 
 // A marker used to indicate the top of the stack

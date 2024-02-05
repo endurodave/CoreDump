@@ -219,10 +219,10 @@ void CoreDumpStore(INTEGER_TYPE* stackPointer, const char* fileName,
         // Hardware exception occurred!
         _coreDumpData.Type = FAULT_EXCEPTION;
 
+#ifdef USE_HARDWARE
         // Store all the registers located on the stack
         // TODO: Registers pushed onto stack is a platform-specific implementation detail.
         // See your CPU processor, BSP, and/or compiler documentation. 
-#ifdef USE_HARDWARE
         _coreDumpData.R0_register = *stackPointer;
         _coreDumpData.R1_register = *(stackPointer + 1);
         _coreDumpData.R2_register = *(stackPointer + 2);

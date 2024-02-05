@@ -1,7 +1,10 @@
 #ifndef _OPTIONS_H
 #define _OPTIONS_H
 
+// TODO: Enable one or more options below as required
+
 // Define to enable hardware-specific features based on a specific platform
+// Most code compiled within USE_HARDWARE is for ARM
 //#define USE_HARDWARE
 
 // Define to enabled operating system specific features
