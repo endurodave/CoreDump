@@ -2,6 +2,38 @@
 
 A core dump framework that stores crash information including call stacks on any embedded system.
 
+# Table of Contents
+
+- [Overview](#overview)
+- [Table of Contents](#table-of-contents)
+- [Introduction](#introduction)
+- [Background](#background)
+- [Core Dump High-Level Process](#core-dump-high-level-process)
+- [Core Dump API](#core-dump-api)
+- [Development Tools](#development-tools)
+  - [Address-to-Line](#address-to-line)
+  - [No zero-initialize RAM section](#no-zero-initialize-ram-section)
+  - [Bootloader No-Init](#bootloader-no-init)
+- [Persistent storage](#persistent-storage)
+  - [Debugger with memory view](#debugger-with-memory-view)
+- [CoreDump Project](#coredump-project)
+- [Stack Frame](#stack-frame)
+- [Address Decoding](#address-decoding)
+- [Fault Handling](#fault-handling)
+- [Stack Backtrace](#stack-backtrace)
+  - [Stack Backtrace Capture (no frame pointer)](#stack-backtrace-capture-no-frame-pointer)
+  - [Stack Backtrace Capture (use frame pointer)](#stack-backtrace-capture-use-frame-pointer)
+  - [Stack Backtrace Capture (Linux)](#stack-backtrace-capture-linux)
+  - [Stack Backtrace Capture (GCC)](#stack-backtrace-capture-gcc)
+  - [Stack Backtrace Capture (Windows)](#stack-backtrace-capture-windows)
+  - [Other Stack Backtrace Options](#other-stack-backtrace-options)
+- [After Reboot](#after-reboot)
+- [Dump.txt](#dumptxt)
+- [Dump.txt Decoder](#dumptxt-decoder)
+- [OS Support](#os-support)
+- [Conclusion](#conclusion)
+
+
 # Introduction
 
 Embedded software development can be quite difficult, especially when trying to solve intermittent software failures. A core dump, or sometimes called a crash dump, is a means of capturing a "snapshot" of the CPU and software state at moment of failure. Whereas large, full-featured operating systems like Windows and Linux already have built-in crash dump capabilities, embedded systems typically aren't equipped with such luxuries. Yet these systems are the ones most in need of a post-mortem diagnostic utility. Embedded systems are increasingly complex with threads, drivers, interrupts and lots of low-level custom crafted code – things are bound to go wrong in difficult to diagnose ways. 
@@ -538,7 +570,7 @@ The advantage of this algorithm is that once the code syncs up with the frame po
 
 ## Stack Backtrace Capture (Linux)
 
-The Linux version relies upon `backtrace` and `backtrace_symbol`. Optionally you could can store the function names instead of addresses using `symbols[i]`.
+The Linux version relies upon `backtrace` and `backtrace_symbol`. Optionally you can store the function names instead of addresses using `symbols[i]`.
 
 ```cpp
 #ifdef USE_LINUX_BACKTRACE
