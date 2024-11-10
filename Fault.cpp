@@ -1,15 +1,20 @@
 #include "Fault.h"
 #include "CoreDump.h"
+#include <stdio.h>
 
 void FaultHandler(const char* file, unsigned short line)
 {
 	// Store software assertion core dump data
 	CoreDumpStore(0, file, line, 0);
 
+	printf("Fault at file %s line %d.\n", file, line);
+	printf("The _coreDumpData structure has crash results.\n");
+	printf("Use a debugger to view the structure or store somewhere.\n");
+
 	// TODO: Reboot CPU here! After reboot, the core dump data is used.
 	
 	// If you hit this line, it means one of the ASSERT macros failed.
-	while (true);
+	//while (true);
 }
 
 void HardFaultHandler(void)

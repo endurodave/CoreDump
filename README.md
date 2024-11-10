@@ -8,6 +8,9 @@ A core dump framework that stores crash information including call stacks on any
 - [Table of Contents](#table-of-contents)
 - [Introduction](#introduction)
 - [Background](#background)
+- [Project Build](#project-build)
+  - [Windows Visual Studio](#windows-visual-studio)
+  - [Linux Make](#linux-make)
 - [Core Dump High-Level Process](#core-dump-high-level-process)
 - [Core Dump API](#core-dump-api)
 - [Development Tools](#development-tools)
@@ -73,6 +76,24 @@ Simple software assertion logging doesn't go far enough to capture the type of r
 When designing my first core dump utility, I found disjointed and incomplete information on the subject. While some information existed, what I found missing was a complete core dump example addressing all aspects of implementation. Bits and pieces explained capturing maybe a few registers. But what if I wanted a stack trace for active thread, or all threads? What data should be stored, and where, and how to get the information off the device? How is the crash data analyzed? 
 
 By its nature, a core dump is a very platform-specific feature that changes based upon the processor architecture, hardware design, development tools and operation system. The basic tenet of capturing and persisting crash information, however, crosses all those boundaries. This article provides guidance on development techniques regardless of the target device.
+
+# Project Build
+
+<a href="https://www.cmake.org">CMake</a> is used to create the build files. CMake is free and open-source software. Windows, Linux and other toolchains are supported. Example CMake console commands located inside <code>CMakeLists.txt</code>.
+
+For testing, place a breakpoint at the end of `CoreDumpStore()` and examine the `_coreDumpData` structure for the crash data. See `Options.h` for build options.
+
+## Windows Visual Studio
+
+<code>cmake -G "Visual Studio 17 2022" -A Win32 -B ../CoreDumpBuild -S .</code>
+
+After executed, open the Visual Studio project from within the <code>CoreDumpBuild</code> directory.
+
+## Linux Make
+
+<code>cmake -G "Unix Makefiles" -B ../CoreDumpBuild -S .</code>
+
+After executed, build the software from within the <code>CoreDumpBuild</code> directory using the command <code>make</code>. Run the console app using <code>./CoreDumpApp</code>.
 
 # Core Dump High-Level Process
 

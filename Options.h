@@ -17,9 +17,13 @@
 //#define USE_BUILTIN_BACKTRACE
 
 // Define to use GCC backtrace and backtrace_symbols for active call stack
-//#define USE_LINUX_BACKTRACE
+#ifdef __linux__
+#define USE_LINUX_BACKTRACE
+#endif
 
 // Define to use Windows backtrace method. Must link with DbgHelp.lib.
-//#define USE_WINDOWS_BACKTRACE
+#ifdef WIN32
+#define USE_WINDOWS_BACKTRACE
+#endif
 
 #endif 
